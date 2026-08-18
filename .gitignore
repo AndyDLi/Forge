@@ -1,0 +1,11 @@
+# Markdown files
+tasks/
+*.md
+!README.md
+!docs/*.md
+
+# Environment variables
+.env
+
+# InteliJ IDEA
+.idea/
