@@ -1,0 +1,137 @@
+name: forge
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${FORGE_DB_NAME:?set FORGE_DB_NAME in .env}
+      POSTGRES_USER: ${FORGE_DB_USER:?set FORGE_DB_USER in .env}
+      POSTGRES_PASSWORD: ${FORGE_DB_PASSWORD:?set FORGE_DB_PASSWORD in .env}
+    ports:
+      - "${FORGE_POSTGRES_HOST_PORT:?set FORGE_POSTGRES_HOST_PORT in .env}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FORGE_DB_USER:?} -d ${FORGE_DB_NAME:?}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${FORGE_REDIS_HOST_PORT:?set FORGE_REDIS_HOST_PORT in .env}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:2026.07.4
+    environment:
+      SERVICES: s3
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:?set LOCALSTACK_AUTH_TOKEN in .env}
+    ports:
+      - "${FORGE_LOCALSTACK_HOST_PORT:?set FORGE_LOCALSTACK_HOST_PORT in .env}:4566"
+    volumes:
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -sf http://localhost:4566/_localstack/health
+          | grep -Eq '"s3": ?"(available|running)"'
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  bucket-init:
+    image: localstack/localstack:2026.07.4
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        awslocal --endpoint-url http://localstack:4566 s3api head-bucket --bucket "$$FORGE_S3_BUCKET" 2>/dev/null \
+          || awslocal --endpoint-url http://localstack:4566 s3 mb "s3://$$FORGE_S3_BUCKET"
+        awslocal --endpoint-url http://localstack:4566 s3api put-bucket-cors \
+          --bucket "$$FORGE_S3_BUCKET" --cors-configuration file:///cors.json
+        awslocal --endpoint-url http://localstack:4566 s3api get-bucket-cors --bucket "$$FORGE_S3_BUCKET"
+    environment:
+      AWS_ACCESS_KEY_ID: ${FORGE_S3_ACCESS_KEY:?}
+      AWS_SECRET_ACCESS_KEY: ${FORGE_S3_SECRET_KEY:?}
+      AWS_DEFAULT_REGION: ${FORGE_S3_REGION:?}
+      FORGE_S3_BUCKET: ${FORGE_S3_BUCKET:?set FORGE_S3_BUCKET in .env}
+    volumes:
+      - ./infra/cors.json:/cors.json:ro
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+    image: forge:local
+    environment:
+      SPRING_PROFILES_ACTIVE: api
+      FORGE_DB_URL: jdbc:postgresql://postgres:5432/${FORGE_DB_NAME:?}
+      FORGE_DB_USER: ${FORGE_DB_USER:?}
+      FORGE_DB_PASSWORD: ${FORGE_DB_PASSWORD:?}
+      FORGE_REDIS_HOST: redis
+      FORGE_REDIS_PORT: 6379
+      FORGE_S3_ENDPOINT_INTERNAL: http://localstack:4566
+      FORGE_S3_ENDPOINT_EXTERNAL: http://localhost:${FORGE_LOCALSTACK_HOST_PORT:?}
+      FORGE_S3_REGION: ${FORGE_S3_REGION:?}
+      FORGE_S3_ACCESS_KEY: ${FORGE_S3_ACCESS_KEY:?}
+      FORGE_S3_SECRET_KEY: ${FORGE_S3_SECRET_KEY:?}
+      FORGE_S3_BUCKET: ${FORGE_S3_BUCKET:?}
+    ports:
+      - "${FORGE_API_PORT:?set FORGE_API_PORT in .env}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      bucket-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+    image: forge:local
+    environment:
+      SPRING_PROFILES_ACTIVE: worker
+      FORGE_DB_URL: jdbc:postgresql://postgres:5432/${FORGE_DB_NAME:?}
+      FORGE_DB_USER: ${FORGE_DB_USER:?}
+      FORGE_DB_PASSWORD: ${FORGE_DB_PASSWORD:?}
+      FORGE_REDIS_HOST: redis
+      FORGE_REDIS_PORT: 6379
+      FORGE_S3_ENDPOINT_INTERNAL: http://localstack:4566
+      FORGE_S3_ENDPOINT_EXTERNAL: http://localhost:${FORGE_LOCALSTACK_HOST_PORT:?}
+      FORGE_S3_REGION: ${FORGE_S3_REGION:?}
+      FORGE_S3_ACCESS_KEY: ${FORGE_S3_ACCESS_KEY:?}
+      FORGE_S3_SECRET_KEY: ${FORGE_S3_SECRET_KEY:?}
+      FORGE_S3_BUCKET: ${FORGE_S3_BUCKET:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      bucket-init:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+  localstack-data:
