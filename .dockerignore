@@ -1,0 +1,11 @@
+.git
+.gitignore
+.gradle
+build
+.idea
+node_modules
+docs
+tasks
+*.md
+.env
+*.log

@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: forge
+
+  datasource:
+    url: ${FORGE_DB_URL}
+    username: ${FORGE_DB_USER}
+    password: ${FORGE_DB_PASSWORD}
+
+  data:
+    redis:
+      host: ${FORGE_REDIS_HOST}
+      port: ${FORGE_REDIS_PORT}
+
+  flyway:
+    enabled: false
+    locations: classpath:db/migration
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate  # fails to boot if @Entity classes do not match the database schema
+
+forge:
+  s3:
+    internal-endpoint: ${FORGE_S3_ENDPOINT_INTERNAL}
+    external-endpoint: ${FORGE_S3_ENDPOINT_EXTERNAL}
+    region: ${FORGE_S3_REGION}
+    access-key: ${FORGE_S3_ACCESS_KEY}
+    secret-key: ${FORGE_S3_SECRET_KEY}
+    bucket: ${FORGE_S3_BUCKET}

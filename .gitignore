@@ -7,5 +7,16 @@ tasks/
 # Environment variables
 .env
 
-# InteliJ IDEA
+# IntelliJ IDEA
 .idea/
+
+# Build
+build/
+target/
+*.class
+
+# Gradle
+.gradle/
+
+# Node
+node_modules/

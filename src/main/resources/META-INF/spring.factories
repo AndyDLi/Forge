@@ -1,0 +1,4 @@
+# Runs on ApplicationPreparedEvent: after initializers have contributed property sources, but
+# before the context is refreshed, so missing configuration fails before any bean is created.
+org.springframework.context.ApplicationListener=\
+com.forge.infrastructure.RequiredConfigurationCheck
