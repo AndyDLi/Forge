@@ -1,6 +1,7 @@
 package com.forge.domain.user;
 
 import java.util.Locale;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserRegistrationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+
+    private static final String EMAIL_UNIQUE_CONSTRAINT = "users_email_key";
 
     public UserRegistrationService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
@@ -39,11 +42,22 @@ public class UserRegistrationService {
             return this.userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException ex) {
             // safety net for concurrent race conditions
-            throw new DuplicateEmailException(ex);
+
+            // checks if the exception is due to a unique constraint violation on the email field
+            if (this.violatesEmailUniqueness(ex)) {
+                throw new DuplicateEmailException(ex);
+            }
+
+            throw ex;
         }
     }
 
     private String normalizeEmail(String email) {
         return email.strip().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean violatesEmailUniqueness(DataIntegrityViolationException ex) {
+        return ex.getCause() instanceof ConstraintViolationException cause
+            && EMAIL_UNIQUE_CONSTRAINT.equals(cause.getConstraintName());
     }
 }

@@ -8,6 +8,8 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import java.sql.SQLException;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -88,10 +90,25 @@ class UserRegistrationServiceTest {
     void rejectsADuplicateThatOnlyTheDatabaseCatches() {
         given(this.userRepository.existsByEmail(PRIMARY_EMAIL)).willReturn(false);
         given(this.userRepository.saveAndFlush(any(User.class)))
-            .willThrow(new DataIntegrityViolationException("Duplicate email key violation"));
+            .willThrow(new DataIntegrityViolationException(
+                "Could not execute statement",
+                new ConstraintViolationException(
+                    "Duplicate key value violation", new SQLException("23505"), "users_email_key")));
 
         assertThatThrownBy(() -> this.registrationService.registerUser(PRIMARY_EMAIL, PASSWORD))
             .isInstanceOf(DuplicateEmailException.class);
+    }
+
+    @Test
+    void doesNotMistakeAnUnrelatedDataErrorForADuplicate() {
+        given(this.userRepository.existsByEmail(PRIMARY_EMAIL)).willReturn(false);
+        given(this.userRepository.saveAndFlush(any(User.class)))
+            .willThrow(new DataIntegrityViolationException(
+                "Value too long for type character varying(254)"));
+
+        assertThatThrownBy(() -> this.registrationService.registerUser(PRIMARY_EMAIL, PASSWORD))
+            .isInstanceOf(DataIntegrityViolationException.class)
+            .isNotInstanceOf(DuplicateEmailException.class);
     }
 
     /**

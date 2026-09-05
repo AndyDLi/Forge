@@ -26,7 +26,7 @@ public class User {
     private String email;
 
     // A password reaches this class only as a hash produced by the configured PasswordEncoder
-    @Column(name = "password_hash", nullable = false, length = 100)
+    @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
     @Generated(event = EventType.INSERT)
